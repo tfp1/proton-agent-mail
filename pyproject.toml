@@ -1,0 +1,25 @@
+[project]
+name = "proton-agent-mail"
+version = "0.1.0"
+description = "Local AgentMail-shaped API for Proton Mail. User logs into Bridge; the agent does the rest."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Pablo Navarro" }]
+keywords = ["protonmail", "proton-bridge", "himalaya", "agentmail", "ai-agents", "email"]
+classifiers = [
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Topic :: Communications :: Email",
+  "Topic :: Security",
+]
+[project.scripts]
+proton-agent-mail = "proton_agent_mail.cli:main"
+[project.urls]
+Homepage = "https://github.com/PabloTheThinker/proton-agent-mail"
+Issues = "https://github.com/PabloTheThinker/proton-agent-mail/issues"
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+[tool.setuptools.packages.find]
+include = ["proton_agent_mail*"]
