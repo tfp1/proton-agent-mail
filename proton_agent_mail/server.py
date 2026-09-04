@@ -7,6 +7,7 @@ import json
 import os
 import time
 from pathlib import Path
+from email.message import EmailMessage
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 from urllib.parse import parse_qs, urlparse
@@ -22,6 +23,26 @@ from .security import (
     redact,
     token_ok,
 )
+
+
+def _build_rfc822(
+    *, from_addr: str, to: str, subject: str, text: str, message_id: str
+) -> str:
+    """Build the outbound message with EmailMessage.
+
+    EmailMessage raises ValueError on CR/LF in a header value. Assembling the
+    headers by hand lets a caller smuggle extra headers (Bcc, Reply-To) through
+    `to` or `subject`, which is a silent exfiltration channel for an agent that
+    has been prompt-injected.
+    """
+    msg = EmailMessage()
+    msg["From"] = from_addr
+    msg["To"] = to
+    msg["Subject"] = subject
+    msg["Date"] = email.utils.formatdate(localtime=True)
+    msg["Message-ID"] = message_id
+    msg.set_content(text)
+    return msg.as_string()
 
 
 def _json(handler: BaseHTTPRequestHandler, code: int, payload: Any) -> None:
@@ -143,17 +164,13 @@ class AgentHandler(BaseHTTPRequestHandler):
             _json(self, 400, {"error": "to and subject required"})
             return
         mid = f"<pam-{int(time.time())}-{os.getpid()}@localhost>"
-        rfc = (
-            f"From: {self.from_addr}\r\n"
-            f"To: {to}\r\n"
-            f"Subject: {subject}\r\n"
-            f"Date: {email.utils.formatdate(localtime=True)}\r\n"
-            f"Message-ID: {mid}\r\n"
-            "MIME-Version: 1.0\r\n"
-            "Content-Type: text/plain; charset=utf-8\r\n"
-            "\r\n"
-            f"{text}\n"
-        )
+        try:
+            rfc = _build_rfc822(
+                from_addr=self.from_addr, to=to, subject=subject, text=text, message_id=mid
+            )
+        except ValueError as e:
+            _json(self, 400, {"error": f"invalid header: {e}"})
+            return
         try:
             self.himalaya.send_raw(rfc)
         except HimalayaError as e:
