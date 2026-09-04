@@ -45,6 +45,15 @@ class SecurityTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             sanitize_message_id("; rm -rf /")
 
+    def test_message_id_rejects_leading_dash(self):
+        # "--config" is made entirely of allowlisted characters, so the old
+        # pattern passed it straight through to himalaya's argument parser.
+        self.assertEqual(sanitize_message_id("1234"), "1234")
+        self.assertEqual(sanitize_message_id("a-b_c.1"), "a-b_c.1")
+        for bad in ("--config", "-c", "--help"):
+            with self.assertRaises(RuntimeError):
+                sanitize_message_id(bad)
+
     def test_child_env_strips_token(self):
         import os
 

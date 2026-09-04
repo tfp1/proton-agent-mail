@@ -112,7 +112,9 @@ def load_token() -> str:
 
 
 _FOLDER_OK = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 ._-]{0,63}$")
-_ID_OK = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
+# first character is anchored the same way as _FOLDER_OK: a leading "-"
+# would let the value reach himalaya's argument parser as a flag.
+_ID_OK = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 
 
 def sanitize_folder(name: str) -> str:

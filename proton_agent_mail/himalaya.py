@@ -54,7 +54,9 @@ class Himalaya:
         return data
 
     def read(self, message_id: str) -> str:
-        return self._run(["message", "read", sanitize_message_id(message_id)], timeout=45)
+        # "--" so a value can never be parsed as an option, even if the
+        # allowlist above is later loosened.
+        return self._run(["message", "read", "--", sanitize_message_id(message_id)], timeout=45)
 
     def send_raw(self, rfc822: str) -> None:
         try:
