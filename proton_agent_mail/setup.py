@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import os
 import re
 import shutil
@@ -21,9 +23,25 @@ HIMALAYA_URL = (
     "https://github.com/pimalaya/himalaya/releases/download/"
     "v1.2.0/himalaya.x86_64-linux.tgz"
 )
+# sha256 of the tarball at HIMALAYA_URL. Regenerate when bumping the version:
+#   curl -sSL "$HIMALAYA_URL" | sha256sum
+HIMALAYA_SHA256 = "e04e6382e3e664ef34b01afa1a2216113194a2975d2859727647b22d9b36d4e4"
 INFO_USER = re.compile(r"(?:Username|username|IMAP user)\s*[:=]\s*(\S+)", re.I)
 INFO_PASS = re.compile(r"(?:Password|password|IMAP password)\s*[:=]\s*(\S+)", re.I)
 INFO_EMAIL = re.compile(r"([\w.+-]+@[\w.-]+)", re.I)
+
+
+def verify_sha256(path: Path, expected: str) -> None:
+    """Refuse an archive whose digest does not match the pin."""
+    h = hashlib.sha256()
+    with path.open("rb") as fh:
+        for chunk in iter(lambda: fh.read(1024 * 1024), b""):
+            h.update(chunk)
+    got = h.hexdigest()
+    if not hmac.compare_digest(got, expected):
+        raise RuntimeError(
+            f"himalaya archive sha256 mismatch: expected {expected}, got {got}"
+        )
 
 
 def port_up(port: int, host: str = "127.0.0.1") -> bool:
@@ -72,6 +90,7 @@ def ensure_himalaya(dest_dir: Path | None = None) -> str:
     with tempfile.TemporaryDirectory() as td:
         tgz = Path(td) / "himalaya.tgz"
         urllib.request.urlretrieve(HIMALAYA_URL, tgz)
+        verify_sha256(tgz, HIMALAYA_SHA256)
         with tarfile.open(tgz) as tf:
             tf.extractall(td, filter="data")
         bin_src = next(Path(td).rglob("himalaya"))
