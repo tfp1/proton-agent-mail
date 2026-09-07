@@ -21,11 +21,15 @@ Bridge on **loopback only**.
 9. Serve **refuses** if Himalaya `backend.host` / SMTP host is not loopback.
 10. The IMAP child does not inherit `PROTON_AGENT_TOKEN`.
 11. Folder names and message ids are allowlisted (no shell injection).
+12. **This fork is read-only.** No send route, no SMTP stanza in the generated
+    Himalaya config, and no wrapper for `message delete` / `move` / `copy` /
+    `flag add` — those are IMAP writes, so blocking SMTP would not have covered
+    them. Serve **refuses** to start if the config declares a send backend.
 
 ## Bridge hop
 
 ```
-agent --token--> 127.0.0.1:18765 --> Himalaya --> 127.0.0.1:1143/1025 --> Bridge --> Proton
+agent --token--> 127.0.0.1:18765 --> Himalaya --> 127.0.0.1:1143 (IMAP) --> Bridge --> Proton
 ```
 
 - Set Bridge IMAP/SMTP host to `127.0.0.1` (not `0.0.0.0`).

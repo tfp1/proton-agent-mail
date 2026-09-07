@@ -203,6 +203,32 @@ def assert_config_private(path: Path) -> None:
         raise RuntimeError(f"{path} must be mode 0600 or tighter")
 
 
+_SMTP_DECL = re.compile(r"(?im)^\s*message\.send\.backend|^\s*\[\s*accounts\.[^\]]+\.message\.send")
+
+
+def assert_no_smtp_config(path: Path) -> None:
+    """Refuse to serve if the Himalaya config declares a send backend at all.
+
+    Not writing SMTP config is a property of setup(); this makes it a property of
+    every start. Without it, a config edited by hand (or restored from a backup
+    taken before this fork) would silently re-arm `himalaya message send` while
+    every other layer still reported read-only.
+
+    Does not print config contents -- they include auth.raw.
+    """
+    if not path.is_file():
+        return
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError as e:
+        raise RuntimeError(f"cannot read himalaya config: {e}") from e
+    if _SMTP_DECL.search(text):
+        raise RuntimeError(
+            f"{path} declares a send backend (message.send.*) — this build is "
+            "read-only; remove the SMTP stanza before serving"
+        )
+
+
 def assert_himalaya_bridge_hosts(path: Path) -> None:
     """Refuse serve if Himalaya IMAP/SMTP host is not loopback.
 

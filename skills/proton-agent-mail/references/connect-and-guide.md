@@ -15,11 +15,11 @@ You will install three local pieces. Mail stays on Proton. I (the agent) only ge
 ### 1. Bridge
 - Install from https://proton.me/mail/bridge
 - Sign in **in the Bridge app**, not in chat
-- Confirm IMAP `127.0.0.1:1143` and SMTP `127.0.0.1:1025`
+- Confirm IMAP `127.0.0.1:1143`. Bridge also binds SMTP `127.0.0.1:1025`, but nothing here is configured to use it
 - Copy the **Bridge** username + password from the Bridge UI into Himalaya yourself
 - Do not paste those into the agent chat
 
-Agent check: port 1143 and 1025 listening on loopback.
+Agent check: port 1143 listening on loopback.
 
 ### 2. Himalaya 1.2+
 - `himalaya --version` must show `v1.2.0` or higher
@@ -42,7 +42,7 @@ Agent check: `proton-agent-mail health` → ok + himalaya 1.2+.
 ### 4. First mail
 `proton-agent-mail list` — envelopes only.  
 Read one non-sensitive id.  
-Do not send until they ask.
+This build cannot send; there is no send command to reach for.
 
 ## If they get stuck
 

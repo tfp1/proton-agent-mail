@@ -131,13 +131,10 @@ backend.login = "{safe_user}"
 backend.auth.type = "password"
 backend.auth.raw = "{safe_pw}"
 
-message.send.backend.type = "smtp"
-message.send.backend.host = "127.0.0.1"
-message.send.backend.port = 1025
-message.send.backend.encryption.type = "none"
-message.send.backend.login = "{safe_user}"
-message.send.backend.auth.type = "password"
-message.send.backend.auth.raw = "{safe_pw}"
+# No message.send.backend stanza, deliberately. Without it `himalaya message
+# send` has nowhere to connect, so the config itself carries the no-send
+# guarantee rather than relying on the caller never asking. serve() re-checks
+# this on every start (assert_no_smtp_config).
 
 folder.aliases.inbox = "INBOX"
 folder.aliases.sent = "Sent"
@@ -156,6 +153,8 @@ def write_token_file() -> Path:
 
 
 def start_bridge_noninteractive(bridge: str) -> None:
+    # Bridge binds both ports whatever we do; 1025 is only ever a readiness
+    # signal here. Nothing in this build is configured to connect to it.
     if port_up(1143) and port_up(1025):
         return
     subprocess.Popen(

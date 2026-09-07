@@ -13,7 +13,7 @@ metadata:
 
 # Proton Agent Mail
 
-**What this is:** a local AgentMail-shaped inbox API so an AI agent can list, read, and send **Proton Mail** without holding the mailbox password.
+**What this is:** a local AgentMail-shaped inbox API so an AI agent can list and read **Proton Mail**, and pull attachments, without holding the mailbox password. **This fork cannot send and cannot modify the mailbox** — every mutating HTTP verb returns 405.
 
 **What this is not:** Proton cloud, Gmail, or AgentMail.to hosting.
 
@@ -33,7 +33,7 @@ Do not use for Gmail, Outlook, or skipping Bridge.
 2. They sign into Bridge **in the Bridge app**. They paste the Bridge password into Himalaya config **themselves**.
 3. Never ask for Proton password, Bridge password, or `auth.raw` in chat.
 4. Confirm each step with a check you can run (ports, version, health, 401).
-5. First success is `list` (headers only). Do not send until they ask.
+5. First success is `list` (headers only).
 
 ## Prerequisites
 
@@ -53,7 +53,7 @@ Prefer `terminal`. Do not print the token.
 proton-agent-mail health
 proton-agent-mail list --limit 15
 proton-agent-mail read <id>
-proton-agent-mail send --to ADDR --subject '…' --body '…'
+proton-agent-mail attachments ID
 ```
 
 REST (Authorization: Bearer $token):
@@ -65,9 +65,9 @@ REST (Authorization: Bearer $token):
 | GET | `/inboxes/{id}/messages` |
 | GET | `/inboxes/{id}/messages/{id}` |
 | GET | `/inboxes/{id}/threads` |
-| POST | `/inboxes/{id}/messages/send` |
+| POST/PUT/PATCH/DELETE | *(none — always 405)* |
 
-Default inbox id: `default`. Send JSON: `{"to":"a@b.com","subject":"Hi","text":"…"}`.
+Default inbox id: `default`. There is no send JSON — this build is read-only.
 
 ## Procedure (autonomous)
 

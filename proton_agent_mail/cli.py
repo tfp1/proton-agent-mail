@@ -1,4 +1,6 @@
-"""CLI: proton-agent-mail {serve,health,list,read,send,token}"""
+"""CLI: proton-agent-mail {serve,health,list,read,attachments,token}
+
+Read-only fork -- there is no send subcommand. See homelab#91."""
 
 from __future__ import annotations
 
@@ -8,6 +10,7 @@ import os
 import sys
 import urllib.error
 import urllib.request
+from urllib.parse import quote
 
 from . import __version__
 from .security import default_bind, load_token, new_token
@@ -46,12 +49,13 @@ def main() -> None:
     sub.add_parser("token")
     lst = sub.add_parser("list")
     lst.add_argument("--limit", type=int, default=15)
+    lst.add_argument("--folder", default="")
     rd = sub.add_parser("read")
     rd.add_argument("id")
-    sd = sub.add_parser("send")
-    sd.add_argument("--to", required=True)
-    sd.add_argument("--subject", required=True)
-    sd.add_argument("--body", default="")
+    rd.add_argument("--folder", default="")
+    att = sub.add_parser("attachments")
+    att.add_argument("id")
+    att.add_argument("--folder", default="")
     sub.add_parser("setup")
     args = p.parse_args()
 
@@ -73,22 +77,23 @@ def main() -> None:
         return
     _, inbox = _url()
     if args.cmd == "list":
-        print(json.dumps(_req("GET", f"/inboxes/{inbox}/messages?limit={args.limit}"), indent=2))
+        q = f"&folder={quote(args.folder)}" if args.folder else ""
+        print(
+            json.dumps(_req("GET", f"/inboxes/{inbox}/messages?limit={args.limit}{q}"), indent=2)
+        )
         return
     if args.cmd == "read":
-        print(json.dumps(_req("GET", f"/inboxes/{inbox}/messages/{args.id}"), indent=2))
+        q = f"?folder={quote(args.folder)}" if args.folder else ""
+        print(json.dumps(_req("GET", f"/inboxes/{inbox}/messages/{args.id}{q}"), indent=2))
         return
-    if args.cmd == "send":
+    if args.cmd == "attachments":
+        q = f"?folder={quote(args.folder)}" if args.folder else ""
         print(
             json.dumps(
-                _req(
-                    "POST",
-                    f"/inboxes/{inbox}/messages/send",
-                    {"to": args.to, "subject": args.subject, "text": args.body},
-                ),
-                indent=2,
+                _req("GET", f"/inboxes/{inbox}/messages/{args.id}/attachments{q}"), indent=2
             )
         )
+        return
 
 
 if __name__ == "__main__":

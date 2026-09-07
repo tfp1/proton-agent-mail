@@ -22,7 +22,7 @@ The human types `login` in Bridge. The agent installs Himalaya, watches until th
 It is not Proton. It is not a cloud inbox factory. It is not Gmail.
 
 <table>
-<tr><td><b>AgentMail-shaped REST</b></td><td><code>/inboxes/…/messages</code> — list, read, threads, send. Same verbs an agent already knows from hosted AgentMail.</td></tr>
+<tr><td><b>AgentMail-shaped REST</b></td><td><code>/inboxes/…/messages</code> — list, read, threads, attachments. Read verbs an agent already knows from hosted AgentMail. <b>This fork removes send.</b></td></tr>
 <tr><td><b>Hard wall</b></td><td>Bearer token + HMAC compare. Loopback bind. Envelope-first list. Body is a second call. Logs redact secrets.</td></tr>
 <tr><td><b>User only logs in</b></td><td><code>proton-agent-mail setup</code> installs Himalaya 1.2, starts Bridge if present, and waits. You run <code>login</code> in the Bridge CLI. Setup finishes when <code>info</code> has IMAP credentials.</td></tr>
 <tr><td><b>Himalaya 1.2 required</b></td><td>1.1 hangs on Proton Bridge <code>AUTH PLAIN</code>. This package refuses to start on older binaries.</td></tr>
@@ -59,6 +59,14 @@ proton-agent-mail list
 
 ---
 
+> **This is a fork.** Upstream is
+> [PabloTheThinker/proton-agent-mail](https://github.com/PabloTheThinker/proton-agent-mail).
+> It carries four fixes filed upstream as PRs #1, #2, #5 and #6 (all unmerged at the
+> time of writing), and then **removes send entirely** — no send route, no SMTP in the
+> generated Himalaya config, and no wrapper for the IMAP write verbs. Rationale and
+> threat model: `tfp1/homelab#91`.
+
+
 ## Getting started
 
 ```bash
@@ -66,8 +74,8 @@ proton-agent-mail setup     # install Himalaya 1.2, wait for Bridge login
 proton-agent-mail serve     # loopback API (default 127.0.0.1:18765)
 proton-agent-mail health    # { ok, himalaya, inbox }
 proton-agent-mail list      # envelopes only
-proton-agent-mail read ID
-proton-agent-mail send --to ADDR --subject '…' --body '…'
+proton-agent-mail read ID [--folder F]
+proton-agent-mail attachments ID       # list attachments on one message
 proton-agent-mail token     # mint a bearer; do not commit it
 ```
 
@@ -77,7 +85,7 @@ proton-agent-mail token     # mint a bearer; do not commit it
 |----------|---------|
 | `PROTON_AGENT_TOKEN` | Bearer (or use the file) |
 | `PROTON_AGENT_TOKEN_FILE` | Token file, mode 0600 |
-| `PROTON_AGENT_FROM` | `From:` on send |
+| `PROTON_AGENT_EMAIL` | Mailbox address reported by `/inboxes` (`PROTON_AGENT_FROM` still read) |
 | `PROTON_AGENT_INBOX` | Inbox id (`default`) |
 | `PROTON_AGENT_PORT` | `18765` |
 | `PROTON_AGENT_BIND` | `127.0.0.1` |
@@ -97,7 +105,7 @@ agent  --Bearer------>  proton-agent-mail   127.0.0.1:18765
                               |
                          Himalaya 1.2+
                               |
-                    Proton Bridge :1143 / :1025
+                     Proton Bridge :1143 (IMAP)
                               |
                          Proton Mail
 ```
@@ -113,11 +121,11 @@ agent  --Bearer------>  proton-agent-mail   127.0.0.1:18765
 | GET | `/inboxes/{id}/messages/{id}/attachments` | yes |
 | GET | `/inboxes/{id}/messages/{id}/attachments/{n}` | yes |
 | GET | `/inboxes/{id}/threads` | yes |
-| POST | `/inboxes/{id}/messages/send` | yes |
+| POST/PUT/PATCH/DELETE | anything | **405, always** |
 
-```json
-{"to":"owner@example.com","subject":"Hello","text":"…"}
-```
+There is no write path. `POST /inboxes/{id}/messages/send` is gone, and so is any
+route that could `delete`, `move` or `copy` a message — those are IMAP writes and
+would not have been covered by blocking SMTP.
 
 ---
 

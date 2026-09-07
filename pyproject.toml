@@ -1,7 +1,7 @@
 [project]
 name = "proton-agent-mail"
 version = "0.1.0"
-description = "Local AgentMail-shaped API for Proton Mail. User logs into Bridge; the agent does the rest."
+description = "Read-only local AgentMail-shaped API for Proton Mail. Fork of PabloTheThinker/proton-agent-mail with send removed."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
@@ -16,8 +16,9 @@ classifiers = [
 [project.scripts]
 proton-agent-mail = "proton_agent_mail.cli:main"
 [project.urls]
-Homepage = "https://github.com/PabloTheThinker/proton-agent-mail"
-Issues = "https://github.com/PabloTheThinker/proton-agent-mail/issues"
+Homepage = "https://github.com/tfp1/proton-agent-mail"
+Upstream = "https://github.com/PabloTheThinker/proton-agent-mail"
+Issues = "https://github.com/tfp1/homelab/issues/91"
 [build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"

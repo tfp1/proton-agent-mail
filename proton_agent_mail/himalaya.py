@@ -1,4 +1,10 @@
-"""Himalaya 1.2 subprocess wrapper. Never logs stdout that might hold bodies unless asked."""
+"""Himalaya 1.2 subprocess wrapper. Never logs stdout that might hold bodies unless asked.
+
+Read paths only. This fork has no send path, and deliberately no wrapper for the
+IMAP write verbs either -- `message delete`, `move`, `copy` and `flag add` are all
+writes that need no SMTP, so "SMTP is blocked" would not have covered them.
+See homelab#91.
+"""
 
 from __future__ import annotations
 
@@ -87,6 +93,7 @@ class Himalaya:
                 sanitize_folder(folder),
                 "--destination",
                 str(dest),
+                "--",
                 sanitize_message_id(message_id),
             ]
             self._run(args, timeout=120)
@@ -94,21 +101,6 @@ class Himalaya:
                 return dest.read_bytes()
             except OSError as e:
                 raise HimalayaError(f"export produced no message: {e}") from e
-
-    def send_raw(self, rfc822: str) -> None:
-        try:
-            r = subprocess.run(
-                [self.binary, "message", "send"],
-                input=rfc822,
-                capture_output=True,
-                text=True,
-                timeout=60,
-                env=himalaya_child_env(),
-            )
-        except subprocess.TimeoutExpired as e:
-            raise HimalayaError("send timed out") from e
-        if r.returncode != 0:
-            raise HimalayaError(redact((r.stderr or r.stdout or "send failed")[:400]))
 
     def folders(self) -> str:
         return self._run(["folder", "list"], timeout=20)

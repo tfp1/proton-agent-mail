@@ -1,13 +1,10 @@
-"""Minimal AgentMail-shaped HTTP API (stdlib only)."""
+"""Minimal AgentMail-shaped HTTP API (stdlib only). Read-only fork -- see homelab#91."""
 
 from __future__ import annotations
 
-import email.utils
 import json
 import os
-import time
 from pathlib import Path
-from email.message import EmailMessage
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 from urllib.parse import parse_qs, urlparse
@@ -20,35 +17,15 @@ from .security import (
     assert_folder_allowed,
     assert_config_private,
     assert_himalaya_bridge_hosts,
+    assert_no_smtp_config,
     default_bind,
     default_folder,
     extract_bearer,
     folder_scope,
     load_token,
     redact,
-    sanitize_folder,
     token_ok,
 )
-
-
-def _build_rfc822(
-    *, from_addr: str, to: str, subject: str, text: str, message_id: str
-) -> str:
-    """Build the outbound message with EmailMessage.
-
-    EmailMessage raises ValueError on CR/LF in a header value. Assembling the
-    headers by hand lets a caller smuggle extra headers (Bcc, Reply-To) through
-    `to` or `subject`, which is a silent exfiltration channel for an agent that
-    has been prompt-injected.
-    """
-    msg = EmailMessage()
-    msg["From"] = from_addr
-    msg["To"] = to
-    msg["Subject"] = subject
-    msg["Date"] = email.utils.formatdate(localtime=True)
-    msg["Message-ID"] = message_id
-    msg.set_content(text)
-    return msg.as_string()
 
 
 def _json(handler: BaseHTTPRequestHandler, code: int, payload: Any) -> None:
@@ -90,7 +67,7 @@ class AgentHandler(BaseHTTPRequestHandler):
     token = ""
     himalaya: Himalaya
     inbox_id = "default"
-    from_addr = "agent@localhost"
+    email_addr = "agent@localhost"
     folders: tuple[str, ...] | None = None
 
     def log_message(self, fmt: str, *args: Any) -> None:
@@ -129,7 +106,7 @@ class AgentHandler(BaseHTTPRequestHandler):
                     {
                         "inboxes": [
                             {
-                                "email": self.from_addr,
+                                "email": self.email_addr,
                                 "inbox_id": self.inbox_id,
                                 "provider": "proton-bridge",
                                 # null means unrestricted; a list lets an agent
@@ -154,7 +131,8 @@ class AgentHandler(BaseHTTPRequestHandler):
             # "attachments" would otherwise route here with an empty id
             if "/attachments" in rest:
                 mid, _, tail = rest.partition("/attachments")
-                folder = sanitize_folder((qs.get("folder") or ["INBOX"])[0])
+                folder = (qs.get("folder") or [default_folder(self.folders)])[0]
+                folder = assert_folder_allowed(folder, self.folders)
                 raw = self.himalaya.export_raw(mid, folder=folder)
                 if tail in ("", "/"):
                     items = attachments.listing(raw)
@@ -216,45 +194,16 @@ class AgentHandler(BaseHTTPRequestHandler):
             return
         _json(self, 404, {"error": "not found"})
 
-    def do_POST(self) -> None:  # noqa: N802
-        if not self._auth():
-            return
-        path = urlparse(self.path).path
-        length = int(self.headers.get("Content-Length") or 0)
-        if length > 200_000:
-            _json(self, 413, {"error": "payload too large"})
-            return
-        raw = self.rfile.read(length) if length else b"{}"
-        try:
-            data = json.loads(raw.decode() or "{}")
-        except json.JSONDecodeError:
-            _json(self, 400, {"error": "invalid json"})
-            return
-        if path != f"/inboxes/{self.inbox_id}/messages/send":
-            _json(self, 404, {"error": "not found"})
-            return
-        to = data.get("to")
-        if isinstance(to, list):
-            to = to[0] if to else ""
-        subject = data.get("subject") or ""
-        text = data.get("text") or data.get("body") or ""
-        if not to or not subject:
-            _json(self, 400, {"error": "to and subject required"})
-            return
-        mid = f"<pam-{int(time.time())}-{os.getpid()}@localhost>"
-        try:
-            rfc = _build_rfc822(
-                from_addr=self.from_addr, to=to, subject=subject, text=text, message_id=mid
-            )
-        except ValueError as e:
-            _json(self, 400, {"error": f"invalid header: {e}"})
-            return
-        try:
-            self.himalaya.send_raw(rfc)
-        except HimalayaError as e:
-            _json(self, 502, {"error": str(e)})
-            return
-        _json(self, 200, {"ok": True, "message_id": mid})
+    # This fork is read-only. The refusal is explicit rather than "no route
+    # matched" so that a mutating verb reads as a decision in the code, and so
+    # that adding one back is a visible diff rather than a new branch in do_GET.
+    def _refuse(self) -> None:
+        _json(self, 405, {"error": "this inbox is read-only: no send, no delete, no move"})
+
+    do_POST = _refuse       # noqa: N815 -- send lived here upstream
+    do_PUT = _refuse        # noqa: N815
+    do_PATCH = _refuse      # noqa: N815
+    do_DELETE = _refuse     # noqa: N815
 
 
 def serve(host: str | None = None, port: int | None = None) -> None:
@@ -262,6 +211,7 @@ def serve(host: str | None = None, port: int | None = None) -> None:
     cfg = Path.home() / ".config" / "himalaya" / "config.toml"
     assert_config_private(cfg)
     assert_himalaya_bridge_hosts(cfg)
+    assert_no_smtp_config(cfg)
     token = load_token()
     him = Himalaya()
     host = host or default_bind()
@@ -269,7 +219,9 @@ def serve(host: str | None = None, port: int | None = None) -> None:
     AgentHandler.token = token
     AgentHandler.himalaya = him
     AgentHandler.inbox_id = os.environ.get("PROTON_AGENT_INBOX", "default")
-    AgentHandler.from_addr = os.environ.get("PROTON_AGENT_FROM", "agent@localhost")
+    AgentHandler.email_addr = os.environ.get(
+        "PROTON_AGENT_EMAIL", os.environ.get("PROTON_AGENT_FROM", "agent@localhost")
+    )
     AgentHandler.folders = folder_scope()
     httpd = ThreadingHTTPServer((host, port), AgentHandler)
     scope = ",".join(AgentHandler.folders) if AgentHandler.folders else "all folders"
