@@ -24,6 +24,7 @@ from .security import (
     folder_scope,
     load_token,
     redact,
+    sanitize_since,
     token_ok,
 )
 
@@ -117,13 +118,44 @@ class AgentHandler(BaseHTTPRequestHandler):
                     },
                 )
                 return
+            if path == f"/inboxes/{self.inbox_id}/folders":
+                names = self.himalaya.folder_names()
+                if self.folders is not None:
+                    # a scoped consumer should not learn the names of folders
+                    # it cannot read, so intersect rather than annotate
+                    allowed = set(self.folders)
+                    names = [n for n in names if n in allowed]
+                _json(self, 200, {"count": len(names), "folders": names})
+                return
             if path == f"/inboxes/{self.inbox_id}/messages":
-                n = int((qs.get("limit") or ["20"])[0])
-                n = max(1, min(n, 50))
+                try:
+                    requested = int((qs.get("limit") or ["20"])[0])
+                except ValueError:
+                    # do not reflect the caller's string back at them
+                    raise RuntimeError("limit must be an integer") from None
+                n = max(1, min(requested, 50))
                 folder = (qs.get("folder") or [default_folder(self.folders)])[0]
                 folder = assert_folder_allowed(folder, self.folders)
-                items = self.himalaya.envelopes(n=n, folder=folder)
-                _json(self, 200, {"count": len(items), "messages": items})
+                raw_since = (qs.get("since") or [""])[0]
+                since = sanitize_since(raw_since) if raw_since else None
+                query = ["after", since] if since else []
+                # Ordering is stated rather than inherited: a polling consumer
+                # pages from the top, and himalaya's default order is not a
+                # documented guarantee.
+                query += ["order", "by", "date", "desc"]
+                items = self.himalaya.envelopes(n=n, folder=folder, query=query)
+                _json(
+                    self,
+                    200,
+                    {
+                        "count": len(items),
+                        "limit": n,
+                        # the cap used to apply silently; say so instead
+                        "capped": requested > n,
+                        "since": since,
+                        "messages": items,
+                    },
+                )
                 return
             prefix = f"/inboxes/{self.inbox_id}/messages/"
             rest = path[len(prefix):] if path.startswith(prefix) else ""
@@ -191,6 +223,12 @@ class AgentHandler(BaseHTTPRequestHandler):
             return
         except HimalayaError as e:
             _json(self, 502, {"error": str(e)})
+            return
+        except (ValueError, RuntimeError) as e:
+            # A malformed parameter is the caller's fault, not the server's.
+            # Both orderings matter: HimalayaError and FolderDenied are
+            # RuntimeErrors, so they must be caught above this.
+            _json(self, 400, {"error": redact(str(e))})
             return
         _json(self, 404, {"error": "not found"})
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime
 import hmac
 import os
 import re
@@ -160,6 +161,28 @@ def assert_folder_allowed(name: str, scope: tuple[str, ...] | None) -> str:
     if scope is not None and n not in scope:
         raise FolderDenied(f"folder {n!r} is outside this agent's scope")
     return n
+
+
+_DATE_OK = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def sanitize_since(value: str) -> str:
+    """Validate a ``since`` filter as a real calendar date, not just its shape.
+
+    Two separate reasons this is strict. It reaches himalaya's argument parser
+    as a positional query token, and it is the one request parameter a consumer
+    is likely to build by string-formatting rather than by picking from a list.
+    ``date.fromisoformat`` rejects 2026-02-31 and 2026-13-01, which the regex
+    alone would accept.
+    """
+    v = (value or "").strip()
+    if not _DATE_OK.match(v):
+        raise RuntimeError("since must be YYYY-MM-DD")
+    try:
+        datetime.date.fromisoformat(v)
+    except ValueError as e:
+        raise RuntimeError(f"since is not a real date: {e}") from e
+    return v
 
 
 def sanitize_message_id(mid: str) -> str:

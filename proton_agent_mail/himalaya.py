@@ -50,6 +50,9 @@ class Himalaya:
         folder = sanitize_folder(folder)
         args = ["envelope", "list", "-s", str(n), "--output", "json", "--folder", folder]
         if query:
+            # QUERY is positional and last, so "--" keeps a token that begins
+            # with "-" from being read as a flag. Same reasoning as read().
+            args.append("--")
             args.extend(query)
         raw = self._run(args)
         text = raw.strip()
@@ -104,3 +107,31 @@ class Himalaya:
 
     def folders(self) -> str:
         return self._run(["folder", "list"], timeout=20)
+
+    def folder_names(self) -> list[str]:
+        """Folder names as a plain list.
+
+        `folder list --output json` is a list of objects in himalaya 1.2, but
+        the plain renderer is a table and the JSON shape is not part of any
+        stability promise, so accept a bare list of strings too rather than
+        turning a future field rename into a 502.
+        """
+        raw = self._run(["folder", "list", "--output", "json"], timeout=20).strip()
+        if not raw.startswith("["):
+            i = raw.find("[")
+            raw = raw[i:] if i >= 0 else "[]"
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError as e:
+            raise HimalayaError(f"unexpected folder payload: {e}") from e
+        if not isinstance(data, list):
+            raise HimalayaError("unexpected folder payload")
+        names = []
+        for item in data:
+            if isinstance(item, str):
+                names.append(item)
+            elif isinstance(item, dict):
+                name = item.get("name") or item.get("folder")
+                if isinstance(name, str) and name:
+                    names.append(name)
+        return names
