@@ -124,6 +124,44 @@ def sanitize_folder(name: str) -> str:
     return n
 
 
+class FolderDenied(RuntimeError):
+    """Requested folder is outside PROTON_AGENT_FOLDERS."""
+
+
+def folder_scope() -> tuple[str, ...] | None:
+    """Folders this agent may touch, in the order the operator wrote them.
+
+    Unset (or empty) means every folder, which is the historical behaviour.
+    Order is preserved so the first entry can serve as the default folder.
+    """
+    raw = os.environ.get("PROTON_AGENT_FOLDERS", "").strip()
+    if not raw:
+        return None
+    names = tuple(dict.fromkeys(n.strip() for n in raw.split(",") if n.strip()))
+    if not names:
+        return None
+    for n in names:
+        # fail at startup on a malformed scope, not at the first request
+        sanitize_folder(n)
+    return names
+
+
+def default_folder(scope: tuple[str, ...] | None) -> str:
+    return "INBOX" if scope is None else scope[0]
+
+
+def assert_folder_allowed(name: str, scope: tuple[str, ...] | None) -> str:
+    """Shape-check the name, then check it against the scope.
+
+    Matching is exact. IMAP folder names are case-sensitive apart from INBOX,
+    so we do not fold case and risk admitting one the operator did not list.
+    """
+    n = sanitize_folder(name)
+    if scope is not None and n not in scope:
+        raise FolderDenied(f"folder {n!r} is outside this agent's scope")
+    return n
+
+
 def sanitize_message_id(mid: str) -> str:
     if not mid or not _ID_OK.match(mid):
         raise RuntimeError("refusing unsafe message id")

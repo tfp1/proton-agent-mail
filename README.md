@@ -81,6 +81,7 @@ proton-agent-mail token     # mint a bearer; do not commit it
 | `PROTON_AGENT_INBOX` | Inbox id (`default`) |
 | `PROTON_AGENT_PORT` | `18765` |
 | `PROTON_AGENT_BIND` | `127.0.0.1` |
+| `PROTON_AGENT_FOLDERS` | Folders this agent may read, comma-separated. Unset = all. First entry is the default folder. |
 | `HIMALAYA_BIN` | Optional path |
 
 Binding anything other than loopback requires `PROTON_AGENT_ALLOW_LAN=1`. Do not do that casually.

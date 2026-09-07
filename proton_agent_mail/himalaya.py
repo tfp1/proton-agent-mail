@@ -53,10 +53,21 @@ class Himalaya:
             raise HimalayaError("unexpected envelope payload")
         return data
 
-    def read(self, message_id: str) -> str:
-        # "--" so a value can never be parsed as an option, even if the
-        # allowlist above is later loosened.
-        return self._run(["message", "read", "--", sanitize_message_id(message_id)], timeout=45)
+    def read(self, message_id: str, folder: str = "INBOX") -> str:
+        # Two separate hazards, both handled here:
+        #  - envelope ids are per-folder, so a read that does not pass --folder
+        #    resolves the id against INBOX no matter where it was listed from;
+        #  - "--" so a value can never be parsed as an option, even if the
+        #    allowlist is later loosened.
+        args = [
+            "message",
+            "read",
+            "--folder",
+            sanitize_folder(folder),
+            "--",
+            sanitize_message_id(message_id),
+        ]
+        return self._run(args, timeout=45)
 
     def send_raw(self, rfc822: str) -> None:
         try:

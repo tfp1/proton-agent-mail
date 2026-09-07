@@ -14,11 +14,15 @@ from urllib.parse import parse_qs, urlparse
 
 from .himalaya import Himalaya, HimalayaError
 from .security import (
+    FolderDenied,
     assert_bridge_loopback,
+    assert_folder_allowed,
     assert_config_private,
     assert_himalaya_bridge_hosts,
     default_bind,
+    default_folder,
     extract_bearer,
+    folder_scope,
     load_token,
     redact,
     token_ok,
@@ -62,6 +66,7 @@ class AgentHandler(BaseHTTPRequestHandler):
     himalaya: Himalaya
     inbox_id = "default"
     from_addr = "agent@localhost"
+    folders: tuple[str, ...] | None = None
 
     def log_message(self, fmt: str, *args: Any) -> None:
         msg = redact(fmt % args)
@@ -98,7 +103,14 @@ class AgentHandler(BaseHTTPRequestHandler):
                     200,
                     {
                         "inboxes": [
-                            {"email": self.from_addr, "inbox_id": self.inbox_id, "provider": "proton-bridge"}
+                            {
+                                "email": self.from_addr,
+                                "inbox_id": self.inbox_id,
+                                "provider": "proton-bridge",
+                                # null means unrestricted; a list lets an agent
+                                # discover its scope instead of probing for 403s
+                                "folders": list(self.folders) if self.folders else None,
+                            }
                         ]
                     },
                 )
@@ -106,17 +118,20 @@ class AgentHandler(BaseHTTPRequestHandler):
             if path == f"/inboxes/{self.inbox_id}/messages":
                 n = int((qs.get("limit") or ["20"])[0])
                 n = max(1, min(n, 50))
-                folder = (qs.get("folder") or ["INBOX"])[0]
+                folder = (qs.get("folder") or [default_folder(self.folders)])[0]
+                folder = assert_folder_allowed(folder, self.folders)
                 items = self.himalaya.envelopes(n=n, folder=folder)
                 _json(self, 200, {"count": len(items), "messages": items})
                 return
             if path.startswith(f"/inboxes/{self.inbox_id}/messages/"):
                 mid = path.rsplit("/", 1)[-1]
-                text = self.himalaya.read(mid)
-                _json(self, 200, {"message_id": mid, "text": text})
+                folder = (qs.get("folder") or [default_folder(self.folders)])[0]
+                folder = assert_folder_allowed(folder, self.folders)
+                text = self.himalaya.read(mid, folder=folder)
+                _json(self, 200, {"message_id": mid, "folder": folder, "text": text})
                 return
             if path == f"/inboxes/{self.inbox_id}/threads":
-                items = self.himalaya.envelopes(n=20)
+                items = self.himalaya.envelopes(n=20, folder=default_folder(self.folders))
                 _json(
                     self,
                     200,
@@ -133,6 +148,9 @@ class AgentHandler(BaseHTTPRequestHandler):
                     },
                 )
                 return
+        except FolderDenied as e:
+            _json(self, 403, {"error": str(e)})
+            return
         except HimalayaError as e:
             _json(self, 502, {"error": str(e)})
             return
@@ -192,6 +210,12 @@ def serve(host: str | None = None, port: int | None = None) -> None:
     AgentHandler.himalaya = him
     AgentHandler.inbox_id = os.environ.get("PROTON_AGENT_INBOX", "default")
     AgentHandler.from_addr = os.environ.get("PROTON_AGENT_FROM", "agent@localhost")
+    AgentHandler.folders = folder_scope()
     httpd = ThreadingHTTPServer((host, port), AgentHandler)
-    print(f"proton-agent-mail listening on {host}:{port} inbox={AgentHandler.inbox_id}", flush=True)
+    scope = ",".join(AgentHandler.folders) if AgentHandler.folders else "all folders"
+    print(
+        f"proton-agent-mail listening on {host}:{port} "
+        f"inbox={AgentHandler.inbox_id} scope={scope}",
+        flush=True,
+    )
     httpd.serve_forever()
