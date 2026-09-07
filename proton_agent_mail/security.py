@@ -112,7 +112,14 @@ def load_token() -> str:
     )
 
 
-_FOLDER_OK = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 ._-]{0,63}$")
+# Proton nests every label and user folder under "Labels/" or "Folders/", and
+# at least one carries a timestamp, so "/" and ":" have to be admissible or 44
+# of this mailbox's 52 folders are unreachable -- including Labels/Jobs, the one
+# a scoped consumer needs. Neither character is dangerous here: the value is
+# passed as an argv element to himalaya, never through a shell, and an IMAP
+# folder is not a filesystem path. The leading-character anchor is what does the
+# real work; it still rejects "-flag" and "../".
+_FOLDER_OK = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 ._:/-]{0,63}$")
 # first character is anchored the same way as _FOLDER_OK: a leading "-"
 # would let the value reach himalaya's argument parser as a flag.
 _ID_OK = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")

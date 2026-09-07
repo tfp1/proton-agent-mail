@@ -19,6 +19,11 @@ from typing import Any
 from .security import himalaya_child_env, redact, require_himalaya_version, sanitize_folder, sanitize_message_id
 
 
+# Envelope listing is the slowest read: a sorted listing scales with folder
+# size, and Sent already measures 17.5s against the default 35s.
+LIST_TIMEOUT = int(os.environ.get("PROTON_AGENT_LIST_TIMEOUT", "60"))
+
+
 class HimalayaError(RuntimeError):
     pass
 
@@ -54,7 +59,7 @@ class Himalaya:
             # with "-" from being read as a flag. Same reasoning as read().
             args.append("--")
             args.extend(query)
-        raw = self._run(args)
+        raw = self._run(args, timeout=LIST_TIMEOUT)
         text = raw.strip()
         if not text.startswith("["):
             i = text.find("[")

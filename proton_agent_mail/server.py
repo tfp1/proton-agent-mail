@@ -139,10 +139,18 @@ class AgentHandler(BaseHTTPRequestHandler):
                 raw_since = (qs.get("since") or [""])[0]
                 since = sanitize_since(raw_since) if raw_since else None
                 query = ["after", since] if since else []
-                # Ordering is stated rather than inherited: a polling consumer
-                # pages from the top, and himalaya's default order is not a
-                # documented guarantee.
-                query += ["order", "by", "date", "desc"]
+                # Sorting is opt-in because it is not free. IMAP SORT costs time
+                # proportional to folder size, measured on this mailbox at 0.0s
+                # for INBOX (26 messages), 17.5s for Sent and >35s -- a timeout
+                # -- for Archive. An earlier version sorted unconditionally and
+                # made every large folder unlistable. Narrow with `since` first:
+                # Archive sorted but filtered to one week answers in 11s.
+                order = (qs.get("order") or [""])[0].strip().lower()
+                if order:
+                    if order not in ("date_desc", "date_asc"):
+                        raise RuntimeError("order must be date_desc or date_asc")
+                    query += ["order", "by", "date",
+                              "desc" if order == "date_desc" else "asc"]
                 items = self.himalaya.envelopes(n=n, folder=folder, query=query)
                 _json(
                     self,
@@ -153,6 +161,7 @@ class AgentHandler(BaseHTTPRequestHandler):
                         # the cap used to apply silently; say so instead
                         "capped": requested > n,
                         "since": since,
+                        "order": order or None,
                         "messages": items,
                     },
                 )

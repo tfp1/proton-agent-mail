@@ -13,7 +13,12 @@ from http.server import ThreadingHTTPServer
 
 from proton_agent_mail import server
 from proton_agent_mail.himalaya import Himalaya, HimalayaError
-from proton_agent_mail.security import sanitize_since
+from proton_agent_mail.security import (
+    FolderDenied,
+    assert_folder_allowed,
+    sanitize_folder,
+    sanitize_since,
+)
 
 
 class SanitizeSinceTests(unittest.TestCase):
@@ -67,6 +72,28 @@ class EnvelopeArgvTests(unittest.TestCase):
         him = _Recorder("[]")
         him.envelopes(n=5, folder="INBOX")
         self.assertNotIn("--", him.calls[0])
+
+
+class FolderNameShapeTests(unittest.TestCase):
+    """Proton nests labels under Labels/ and Folders/, so "/" must be allowed."""
+
+    def test_proton_nested_folders_are_accepted(self):
+        for name in ("Labels/Jobs", "Folders/Shopping", "Labels/Home-Bills-Loans",
+                     "Folders/_2026-Q1 Job Search", "Labels/Unroll.me",
+                     "Labels/2023-06-14T16:10 gmail migration", "All Mail", "INBOX"):
+            self.assertEqual(sanitize_folder(name), name)
+
+    def test_traversal_and_flags_are_still_refused(self):
+        for bad in ("../../etc/passwd", "-flag", "/etc/passwd", ".hidden",
+                    "a;rm -rf /", "a&b", "a$(id)", "a\nb", "a|b", '"a"'):
+            with self.assertRaises(RuntimeError, msg=bad):
+                sanitize_folder(bad)
+
+    def test_scope_matching_still_works_on_a_nested_name(self):
+        scope = ("Labels/Jobs",)
+        self.assertEqual(assert_folder_allowed("Labels/Jobs", scope), "Labels/Jobs")
+        with self.assertRaises(FolderDenied):
+            assert_folder_allowed("Labels/Home", scope)
 
 
 class FolderNamesTests(unittest.TestCase):
@@ -153,11 +180,35 @@ class RouteTests(unittest.TestCase):
         code, body = self.get("/inboxes/default/messages?since=2026-09-01")
         self.assertEqual(code, 200)
         self.assertEqual(body["since"], "2026-09-01")
-        self.assertEqual(self.him.last_query[:2], ["after", "2026-09-01"])
+        self.assertEqual(self.him.last_query, ["after", "2026-09-01"])
 
-    def test_order_is_stated_even_without_a_since(self):
+    def test_no_sort_unless_asked(self):
+        # sorting a large folder times out, so the default must stay unsorted
         self.get("/inboxes/default/messages")
+        self.assertEqual(self.him.last_query, [])
+
+    def test_order_is_opt_in(self):
+        code, body = self.get("/inboxes/default/messages?order=date_desc")
+        self.assertEqual(code, 200)
+        self.assertEqual(body["order"], "date_desc")
         self.assertEqual(self.him.last_query, ["order", "by", "date", "desc"])
+
+    def test_order_ascending(self):
+        self.get("/inboxes/default/messages?order=date_asc")
+        self.assertEqual(self.him.last_query, ["order", "by", "date", "asc"])
+
+    def test_since_and_order_compose(self):
+        self.get("/inboxes/default/messages?since=2026-09-01&order=date_desc")
+        self.assertEqual(self.him.last_query,
+                         ["after", "2026-09-01", "order", "by", "date", "desc"])
+
+    def test_a_bad_order_is_a_400(self):
+        # percent-encoded "; rm -rf /" -- it reaches himalaya's query parser as
+        # a positional token, so only the allowlist keeps it out
+        code, body = self.get("/inboxes/default/messages?order=%3B%20rm%20-rf%20%2F")
+        self.assertEqual(code, 400)
+        self.assertIn("order", body["error"])
+        self.assertIsNone(self.him.last_query)
 
     def test_a_bad_since_is_a_400_not_a_500(self):
         code, body = self.get("/inboxes/default/messages?since=2026-02-31")
