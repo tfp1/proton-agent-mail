@@ -23,3 +23,20 @@ class SetupParseTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ArchivePinTests(unittest.TestCase):
+    def test_verify_sha256_accepts_and_rejects(self):
+        import hashlib
+        import tempfile
+        from pathlib import Path
+
+        from proton_agent_mail.setup import verify_sha256
+
+        with tempfile.TemporaryDirectory() as td:
+            p = Path(td) / "blob"
+            p.write_bytes(b"himalaya")
+            good = hashlib.sha256(b"himalaya").hexdigest()
+            verify_sha256(p, good)
+            with self.assertRaises(RuntimeError):
+                verify_sha256(p, "0" * 64)
