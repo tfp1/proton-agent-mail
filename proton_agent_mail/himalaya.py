@@ -6,6 +6,8 @@ import json
 import os
 import shutil
 import subprocess
+import tempfile
+from pathlib import Path
 from typing import Any
 
 from .security import himalaya_child_env, redact, require_himalaya_version, sanitize_folder, sanitize_message_id
@@ -68,6 +70,30 @@ class Himalaya:
             sanitize_message_id(message_id),
         ]
         return self._run(args, timeout=45)
+
+    def export_raw(self, message_id: str, folder: str = "INBOX") -> bytes:
+        """Full raw RFC822 for one message.
+
+        `message export --full` writes a .eml rather than printing to stdout,
+        so it lands in a private temp dir that is removed before we return.
+        """
+        with tempfile.TemporaryDirectory() as td:
+            dest = Path(td) / "message.eml"
+            args = [
+                "message",
+                "export",
+                "--full",
+                "--folder",
+                sanitize_folder(folder),
+                "--destination",
+                str(dest),
+                sanitize_message_id(message_id),
+            ]
+            self._run(args, timeout=120)
+            try:
+                return dest.read_bytes()
+            except OSError as e:
+                raise HimalayaError(f"export produced no message: {e}") from e
 
     def send_raw(self, rfc822: str) -> None:
         try:

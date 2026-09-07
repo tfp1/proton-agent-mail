@@ -82,6 +82,7 @@ proton-agent-mail token     # mint a bearer; do not commit it
 | `PROTON_AGENT_PORT` | `18765` |
 | `PROTON_AGENT_BIND` | `127.0.0.1` |
 | `PROTON_AGENT_FOLDERS` | Folders this agent may read, comma-separated. Unset = all. First entry is the default folder. |
+| `PROTON_AGENT_MAX_ATTACHMENT` | Largest attachment served, bytes (25 MiB) |
 | `HIMALAYA_BIN` | Optional path |
 
 Binding anything other than loopback requires `PROTON_AGENT_ALLOW_LAN=1`. Do not do that casually.
@@ -109,6 +110,8 @@ agent  --Bearer------>  proton-agent-mail   127.0.0.1:18765
 | GET | `/inboxes` | yes |
 | GET | `/inboxes/{id}/messages` | yes |
 | GET | `/inboxes/{id}/messages/{id}` | yes |
+| GET | `/inboxes/{id}/messages/{id}/attachments` | yes |
+| GET | `/inboxes/{id}/messages/{id}/attachments/{n}` | yes |
 | GET | `/inboxes/{id}/threads` | yes |
 | POST | `/inboxes/{id}/messages/send` | yes |
 
